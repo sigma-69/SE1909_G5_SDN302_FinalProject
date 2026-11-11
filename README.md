@@ -10,7 +10,7 @@ Công nghệ sử dụng:
 - Xác thực: JWT (jsonwebtoken) qua header Authorization Bearer; mật khẩu được băm bằng bcryptjs trong hook pre-save của model User; phân quyền bằng middleware protect, isAdmin và isStaffOrAdmin. Dashboard quản trị render bằng EJS dùng cookie httpOnly admin_token.
 - Thư viện và dịch vụ khác: Cloudinary và Multer cho ảnh sản phẩm và avatar, Nodemailer cho email đặt lại mật khẩu, CORS, cookie-parser, dotenv, và Swagger UI (OpenAPI 3) tại /api-docs.
 
-Hệ thống đăng ký đúng 93 endpoint. Mỗi endpoint là một cặp phương thức HTTP và đường dẫn sau khi gắn prefix trong server.js. Router đánh giá được mount tại /api và /api/reviews, mỗi nơi 7 đường dẫn. Router bình luận được mount tại /api và /api/comments; 5 handler gắn tại /api trùng phương thức và đường dẫn với router đánh giá (Express khớp router đánh giá trước) nên không tính thêm endpoint. Phân bổ:
+Đối soát lại mọi router trong server.js, gồm cả router được mount hai lần và các trang Admin EJS, không thấy thêm cặp phương thức và đường dẫn nào ngoài 93 endpoint. Hệ thống đăng ký đúng 93 endpoint. Mỗi endpoint là một cặp phương thức HTTP và đường dẫn sau khi gắn prefix. Router đánh giá được mount tại /api và /api/reviews, mỗi nơi 7 đường dẫn. Router bình luận được mount tại /api và /api/comments; 5 handler gắn tại /api trùng phương thức và đường dẫn với router đánh giá (Express khớp router đánh giá trước) nên không tạo thêm endpoint riêng trên Swagger. Phân bổ:
 
 - Hệ thống: 1 (GET /)
 - Giao diện Admin EJS: 7

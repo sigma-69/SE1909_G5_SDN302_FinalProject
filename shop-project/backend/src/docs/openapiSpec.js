@@ -15,27 +15,107 @@ const q = (name, description, schema = { type: 'string' }) => ({
   schema,
 });
 
-const jsonBody = (properties, required = [], description) => ({
-  required: true,
-  description,
-  content: {
-    'application/json': {
-      schema: {
-        type: 'object',
-        required,
-        properties,
-      },
+const SAMPLE = {
+  name: 'Nguyễn Văn A',
+  email: 'newuser@shop.com',
+  password: 'password123',
+  currentPassword: 'password123',
+  newPassword: 'newpassword123',
+  street: '123 Nguyễn Văn Cừ',
+  city: 'Phường An Khánh',
+  state: 'Ninh Kiều, Cần Thơ',
+  phone: '0912345678',
+  recipientName: 'Nguyễn Văn A',
+  isDefault: true,
+  productId: '665f1a2b3c4d5e6f7a8b9c0d',
+  product: '665f1a2b3c4d5e6f7a8b9c0d',
+  variant: '665f1a2b3c4d5e6f7a8b9c0e',
+  variantId: '665f1a2b3c4d5e6f7a8b9c0e',
+  rating: 5,
+  comment: 'Áo mặc thoáng, đúng size.',
+  content: 'Sản phẩm có đổi size không?',
+  parentComment: '665f1a2b3c4d5e6f7a8b9c0c',
+  code: 'SUMMER10',
+  orderAmount: 350000,
+  discountType: 'percentage',
+  discountValue: 10,
+  minOrderValue: 200000,
+  expiryDate: '2026-12-31T23:59:59.000Z',
+  usageLimit: 100,
+  description: 'Áo thun cotton mặc hằng ngày.',
+  price: 159000,
+  originalPrice: 199000,
+  category: 'Áo',
+  brand: 'CLOSET Studio',
+  stock: 20,
+  images: ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800'],
+  isActive: true,
+  sku: 'AO-TRANG-M',
+  size: 'M',
+  color: 'Trắng',
+  quantity: 1,
+  paymentMethod: 'COD',
+  couponCode: 'WELCOME10',
+  shippingPrice: 30000,
+  reason: 'Đặt nhầm size',
+  status: 'Confirmed',
+  note: 'Đã xác nhận với khách',
+  trackingNumber: 'VN123456789',
+  shippingNotes: 'Giao trong giờ hành chính',
+  role: 'staff',
+  logo: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=200',
+  response: 'Cảm ơn bạn đã đánh giá.',
+};
+
+const valueFor = (key, schema) => {
+  if (!schema || typeof schema !== 'object') return undefined;
+  if (schema.example !== undefined) return schema.example;
+  if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
+  if (schema.type === 'object' && schema.properties) {
+    const nested = {};
+    Object.entries(schema.properties).forEach(([childKey, childSchema]) => {
+      const value = valueFor(childKey, childSchema);
+      if (value !== undefined) nested[childKey] = value;
+    });
+    return nested;
+  }
+  if (schema.type === 'array') {
+    if (Array.isArray(SAMPLE[key])) return SAMPLE[key];
+    const one = valueFor(`${key}Item`, schema.items || {});
+    return one === undefined ? [] : [one];
+  }
+  if (schema.type === 'string' && typeof SAMPLE[key] === 'string') return SAMPLE[key];
+  if ((schema.type === 'number' || schema.type === 'integer') && typeof SAMPLE[key] === 'number') return SAMPLE[key];
+  if (schema.type === 'boolean' && typeof SAMPLE[key] === 'boolean') return SAMPLE[key];
+  return undefined;
+};
+
+const jsonBody = (properties, required = [], description) => {
+  const example = {};
+  Object.entries(properties).forEach(([key, schema]) => {
+    const value = valueFor(key, schema);
+    if (value !== undefined) example[key] = value;
+  });
+  const schema = { type: 'object', properties };
+  if (required.length) schema.required = required;
+  return {
+    required: true,
+    description,
+    content: {
+      'application/json': { schema, example },
     },
-  },
-});
+  };
+};
 
 const message = { $ref: '#/components/schemas/MessageResponse' };
 const authUser = { $ref: '#/components/schemas/AuthResponse' };
 
-const json = (description, schema = message) => ({
-  description,
-  content: { 'application/json': { schema } },
-});
+const json = (description, schema = message, example) => {
+  const media = { schema };
+  if (example) media.example = example;
+  else if (schema === message) media.example = { success: false, message: description };
+  return { description, content: { 'application/json': media } };
+};
 
 const text = (description, mime) => ({
   description,
@@ -101,7 +181,11 @@ const productBody = {
   category: str('Tên danh mục'),
   brand: str('Tên thương hiệu, mặc định CLOSET'),
   stock: num('Tồn kho'),
-  images: { type: 'array', items: { type: 'string' }, description: 'URL ảnh' },
+  images: {
+    type: 'array',
+    items: { type: 'string', format: 'uri' },
+    description: 'Danh sách URL ảnh. API không nhận file ở endpoint này. File ảnh đại diện gửi multipart tới POST /api/users/upload-avatar.',
+  },
   isActive: bool('Đang bán'),
 };
 
@@ -320,7 +404,10 @@ const endpoints = [
     responses: { 200: json('Danh sách đánh giá') },
   }),
   endpoint('put', '/api/{id}/status', 'Đánh giá', 'Ẩn hoặc hiện đánh giá (router reviews mount tại /api)', 'staff', {
-    body: jsonBody({ status: str('approved hoặc hidden', { enum: ['approved', 'hidden'] }) }, ['status']),
+    body: jsonBody({
+      status: str('pending, approved hoặc rejected. Schema lưu approved hoặc hidden.', { enum: ['approved', 'pending', 'rejected'] }),
+      response: str('Phản hồi của nhân viên'),
+    }),
     responses: { 200: json('Đã cập nhật trạng thái'), 400: json('Trạng thái không hợp lệ') },
   }),
   endpoint('delete', '/api/{id}', 'Đánh giá', 'Xóa đánh giá (router reviews mount tại /api)', 'staff', {
@@ -443,7 +530,10 @@ const endpoints = [
     responses: { 200: json('Danh sách đánh giá') },
   }),
   endpoint('put', '/api/reviews/{id}/status', 'Đánh giá', 'Duyệt hoặc ẩn đánh giá', 'staff', {
-    body: jsonBody({ status: str('approved hoặc hidden', { enum: ['approved', 'hidden'] }) }, ['status']),
+    body: jsonBody({
+      status: str('pending, approved hoặc rejected. Schema lưu approved hoặc hidden.', { enum: ['approved', 'pending', 'rejected'] }),
+      response: str('Phản hồi của nhân viên'),
+    }),
     responses: { 200: json('Đã cập nhật trạng thái'), 400: json('Trạng thái không hợp lệ') },
   }),
   endpoint('delete', '/api/reviews/{id}', 'Đánh giá', 'Xóa đánh giá', 'staff', {
@@ -613,6 +703,94 @@ const securityFor = (auth) => {
   return [{ bearerAuth: [] }];
 };
 
+const pathExamples = {
+  token: 'a'.repeat(64),
+  id: '665f1a2b3c4d5e6f7a8b9c0d',
+  productId: '665f1a2b3c4d5e6f7a8b9c0d',
+  addressId: '665f1a2b3c4d5e6f7a8b9c0a',
+  variantId: '665f1a2b3c4d5e6f7a8b9c0e',
+};
+
+const queryExamples = {
+  page: 1,
+  limit: 12,
+  search: 'áo thun',
+  category: 'Áo',
+  brand: 'CLOSET Studio',
+  minPrice: 100000,
+  maxPrice: 500000,
+  inStock: 'true',
+  sortBy: 'newest',
+  status: 'active',
+  isActive: 'true',
+  rating: 5,
+  filter: 'approved',
+  discountType: 'percentage',
+  role: 'customer',
+  all: 'true',
+  filterType: 'month',
+  date: '2026-11-10',
+  month: 11,
+  year: 2026,
+  variantId: '665f1a2b3c4d5e6f7a8b9c0e',
+};
+
+const successSchema = {
+  'post /api/users/register': 'AuthResponse',
+  'post /api/users/login': 'AuthResponse',
+  'put /api/users/profile': 'AuthResponse',
+  'get /api/users/profile': 'User',
+  'get /api/users/addresses': 'AddressList',
+  'post /api/users/addresses': 'AddressList',
+  'put /api/users/addresses/{addressId}': 'AddressList',
+  'delete /api/users/addresses/{addressId}': 'AddressList',
+  'put /api/users/addresses/{addressId}/default': 'AddressList',
+  'get /api/favorites': 'FavoriteList',
+  'get /api/products': 'ProductList',
+  'get /api/products/{id}': 'ProductResult',
+  'post /api/products': 'ProductResult',
+  'put /api/products/{id}': 'ProductResult',
+  'get /api/categories': 'ClassificationList',
+  'get /api/categories/manage': 'ClassificationList',
+  'get /api/brands': 'ClassificationList',
+  'get /api/brands/manage': 'ClassificationList',
+  'get /api/coupons': 'CouponList',
+  'get /api/cart': 'Cart',
+  'get /api/wishlist': 'Wishlist',
+  'post /api/orders': 'OrderResult',
+  'get /api/orders/my-orders': 'OrderList',
+  'get /api/orders': 'OrderList',
+  'get /api/orders/{id}': 'OrderResult',
+  'get /api/reviews/product/{productId}': 'ReviewList',
+  'get /api/product/{productId}': 'ReviewList',
+  'post /api/reviews': 'ReviewResult',
+  'post /api': 'ReviewResult',
+  'get /api/comments/product/{productId}': 'CommentList',
+  'post /api/comments': 'CommentResult',
+  'get /api/admin/users': 'UserList',
+  'get /api/admin/stats': 'Stats',
+};
+
+const tagDescriptions = {
+  'Hệ thống': 'Kiểm tra API đang chạy.',
+  'Giao diện Admin': 'Trang HTML EJS. Dùng cookie admin_token, không dùng nút Authorize Bearer.',
+  'Xác thực': 'Đăng ký, đăng nhập, đăng xuất và đặt lại mật khẩu.',
+  'Hồ sơ': 'Hồ sơ, mật khẩu và ảnh đại diện của người đang đăng nhập.',
+  'Địa chỉ': 'Sổ địa chỉ giao hàng, chỉ dành cho customer.',
+  'Yêu thích': 'Sản phẩm yêu thích của người đang đăng nhập.',
+  'Đánh giá': 'Đánh giá sản phẩm. Route /api/... là cùng handler được mount thêm một lần.',
+  'Bình luận': 'Bình luận và trả lời của nhân viên.',
+  'Mã giảm giá': 'Xem, áp dụng và quản lý coupon.',
+  'Sản phẩm': 'Danh mục bán hàng, tìm kiếm, lọc, sắp xếp và biến thể. Ảnh là URL, không phải file.',
+  'Danh mục': 'Phân loại sản phẩm.',
+  'Thương hiệu': 'Thương hiệu sản phẩm.',
+  'Giỏ hàng': 'Giỏ hàng của người đang đăng nhập.',
+  'Wishlist': 'Danh sách muốn mua, có thể chuyển sang giỏ hàng.',
+  'Đơn hàng': 'Tạo và theo dõi đơn.',
+  'Quản trị người dùng': 'Chỉ admin. Quản lý tài khoản và tạo staff.',
+  'Thống kê': 'Số liệu doanh thu cho staff hoặc admin.',
+};
+
 const buildSpec = () => {
   const paths = {};
 
@@ -624,20 +802,45 @@ const buildSpec = () => {
         name,
         in: 'path',
         required: true,
-        schema: idParam(name === 'token' ? 'Token đặt lại mật khẩu, 64 ký tự hex' : 'Định danh'),
+        description: name === 'token' ? 'Token đặt lại mật khẩu, 64 ký tự hex' : 'Định danh MongoDB',
+        schema: idParam(name === 'token' ? 'Token đặt lại mật khẩu, 64 ký tự hex' : 'Định danh MongoDB'),
+        example: pathExamples[name],
       });
     });
-    (item.query || []).forEach((parameter) => parameters.push(parameter));
+    (item.query || []).forEach((parameter) => {
+      parameters.push({
+        ...parameter,
+        example: parameter.example !== undefined ? parameter.example : queryExamples[parameter.name],
+      });
+    });
+
+    const responses = {
+      ...item.responses,
+      ...baseErrors(item.auth),
+    };
+    if (item.body && !responses['400']) {
+      responses['400'] = json('Dữ liệu gửi lên không hợp lệ');
+    }
+    if (/\{(id|productId|addressId|variantId)\}/.test(item.path) && !responses['404']) {
+      responses['404'] = json('Không tìm thấy dữ liệu');
+    }
+    const successCode = responses['201'] ? '201' : responses['200'] ? '200' : null;
+    const successKey = `${item.method} ${item.path}`;
+    if (successCode && successSchema[successKey]) {
+      const previous = responses[successCode];
+      responses[successCode] = json(
+        previous.description,
+        { $ref: `#/components/schemas/${successSchema[successKey]}` }
+      );
+    }
 
     const operation = {
       tags: [item.tag],
       summary: item.summary,
-      description: authText[item.auth],
+      description: `${item.summary}. ${authText[item.auth]}`,
+      operationId: `${item.method}_${item.path.replace(/[{}]/g, '').replace(/\//g, '_').replace(/^_+|_+$/g, '')}`,
       security: securityFor(item.auth),
-      responses: {
-        ...item.responses,
-        ...baseErrors(item.auth),
-      },
+      responses,
     };
     if (parameters.length) operation.parameters = parameters;
     if (item.body) operation.requestBody = item.body;
@@ -654,10 +857,13 @@ const buildSpec = () => {
       description: introduction,
     },
     servers: [
+      { url: '/', description: 'Máy chủ đang mở Swagger' },
       { url: 'http://localhost:5000', description: 'Máy phát triển cục bộ' },
-      { url: '/', description: 'Máy chủ hiện tại' },
     ],
-    tags: [...new Set(endpoints.map((item) => item.tag))].map((name) => ({ name })),
+    tags: [...new Set(endpoints.map((item) => item.tag))].map((name) => ({
+      name,
+      description: tagDescriptions[name] || name,
+    })),
     paths,
     components: {
       securitySchemes: {
@@ -677,25 +883,338 @@ const buildSpec = () => {
       schemas: {
         MessageResponse: {
           type: 'object',
-          properties: { message: { type: 'string' }, success: { type: 'boolean' } },
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+          example: { success: false, message: 'Dữ liệu không hợp lệ' },
         },
-        UserProfile: {
+        Address: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            street: { type: 'string' },
+            city: { type: 'string' },
+            state: { type: 'string' },
+            phone: { type: 'string' },
+            isDefault: { type: 'boolean' },
+          },
+          example: {
+            _id: '665f1a2b3c4d5e6f7a8b9c0a',
+            street: '123 Nguyễn Văn Cừ',
+            city: 'Phường An Khánh',
+            state: 'Ninh Kiều, Cần Thơ',
+            phone: '0912345678',
+            isDefault: true,
+          },
+        },
+        AddressList: { type: 'array', items: { $ref: '#/components/schemas/Address' } },
+        User: {
           type: 'object',
           properties: {
             _id: { type: 'string' },
             name: { type: 'string' },
-            email: { type: 'string' },
+            email: { type: 'string', format: 'email' },
             role: { type: 'string', enum: ['customer', 'staff', 'admin'] },
             isActive: { type: 'boolean' },
             avatar: { type: 'string' },
-            addresses: { type: 'array', items: { type: 'object' } },
+            addresses: { type: 'array', items: { $ref: '#/components/schemas/Address' } },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+          example: {
+            _id: '665f1a2b3c4d5e6f7a8b9c01',
+            name: 'Nguyễn Văn A',
+            email: 'newuser@shop.com',
+            role: 'customer',
+            isActive: true,
+            avatar: '',
+            addresses: [],
+          },
+        },
+        UserProfile: { $ref: '#/components/schemas/User' },
+        UserList: {
+          type: 'object',
+          properties: {
+            users: { type: 'array', items: { $ref: '#/components/schemas/User' } },
+            total: { type: 'integer' },
           },
         },
         AuthResponse: {
           allOf: [
-            { $ref: '#/components/schemas/UserProfile' },
-            { type: 'object', properties: { token: { type: 'string' } } },
+            { $ref: '#/components/schemas/User' },
+            {
+              type: 'object',
+              properties: {
+                token: { type: 'string', description: 'JWT dùng cho nút Authorize' },
+                voucher: { $ref: '#/components/schemas/Coupon' },
+              },
+            },
           ],
+        },
+        ProductVariant: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            sku: { type: 'string' },
+            size: { type: 'string' },
+            color: { type: 'string' },
+            price: { type: 'number', nullable: true },
+            stock: { type: 'integer' },
+            isActive: { type: 'boolean' },
+          },
+        },
+        Product: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            price: { type: 'number' },
+            originalPrice: { type: 'number', nullable: true },
+            category: { type: 'string' },
+            brand: { type: 'string' },
+            stock: { type: 'integer' },
+            images: { type: 'array', items: { type: 'string' }, description: 'URL ảnh, không phải file tải lên' },
+            variants: { type: 'array', items: { $ref: '#/components/schemas/ProductVariant' } },
+            rating: { type: 'number' },
+            numReviews: { type: 'integer' },
+            isActive: { type: 'boolean' },
+          },
+          example: {
+            _id: '665f1a2b3c4d5e6f7a8b9c0d',
+            name: 'Áo Thun Trơn Cổ Tròn',
+            description: 'Áo thun cotton mặc hằng ngày.',
+            price: 159000,
+            originalPrice: 199000,
+            category: 'Áo',
+            brand: 'CLOSET Studio',
+            stock: 20,
+            images: ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800'],
+            variants: [],
+            rating: 5,
+            numReviews: 0,
+            isActive: true,
+          },
+        },
+        ProductList: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            count: { type: 'integer' },
+            total: { type: 'integer' },
+            totalPages: { type: 'integer' },
+            currentPage: { type: 'integer' },
+            limit: { type: 'integer' },
+            products: { type: 'array', items: { $ref: '#/components/schemas/Product' } },
+          },
+          example: { success: true, count: 0, total: 0, totalPages: 1, currentPage: 1, limit: 12, products: [] },
+        },
+        ProductResult: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, product: { $ref: '#/components/schemas/Product' } },
+        },
+        Category: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            isActive: { type: 'boolean' },
+          },
+          example: { _id: '665f1a2b3c4d5e6f7a8b9c11', name: 'Áo', description: 'Áo thun, sơ mi, khoác', isActive: true },
+        },
+        Brand: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            logo: { type: 'string' },
+            isActive: { type: 'boolean' },
+          },
+          example: { _id: '665f1a2b3c4d5e6f7a8b9c12', name: 'CLOSET Studio', description: '', logo: '', isActive: true },
+        },
+        ClassificationList: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            records: { type: 'array', items: { oneOf: [{ $ref: '#/components/schemas/Category' }, { $ref: '#/components/schemas/Brand' }] } },
+          },
+        },
+        CartItem: {
+          type: 'object',
+          properties: {
+            product: { $ref: '#/components/schemas/Product' },
+            variant: { type: 'string', nullable: true },
+            variantLabel: { type: 'string' },
+            quantity: { type: 'integer' },
+            price: { type: 'number' },
+          },
+        },
+        Cart: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            user: { type: 'string' },
+            items: { type: 'array', items: { $ref: '#/components/schemas/CartItem' } },
+          },
+        },
+        Wishlist: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            count: { type: 'integer' },
+            wishlist: {
+              type: 'object',
+              properties: {
+                user: { type: 'string' },
+                products: { type: 'array', items: { $ref: '#/components/schemas/Product' } },
+              },
+            },
+          },
+        },
+        Favorite: {
+          type: 'object',
+          properties: { _id: { type: 'string' }, user: { type: 'string' }, product: { type: 'string' } },
+        },
+        FavoriteList: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, favorites: { type: 'array', items: { $ref: '#/components/schemas/Favorite' } } },
+        },
+        OrderItem: {
+          type: 'object',
+          properties: {
+            product: { type: 'string' },
+            name: { type: 'string' },
+            price: { type: 'number' },
+            quantity: { type: 'integer' },
+            image: { type: 'string' },
+            variant: { type: 'string', nullable: true },
+            variantLabel: { type: 'string' },
+          },
+        },
+        Order: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            user: { type: 'string' },
+            orderItems: { type: 'array', items: { $ref: '#/components/schemas/OrderItem' } },
+            shippingAddress: { $ref: '#/components/schemas/Address' },
+            paymentMethod: { type: 'string', enum: ['COD', 'Banking', 'VNPAY'] },
+            itemsPrice: { type: 'number' },
+            shippingPrice: { type: 'number' },
+            totalPrice: { type: 'number' },
+            status: { type: 'string', enum: ['Pending', 'Confirmed', 'Processing', 'Shipping', 'Delivered', 'Cancelled'] },
+            trackingNumber: { type: 'string' },
+            isPaid: { type: 'boolean' },
+          },
+        },
+        OrderResult: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, order: { $ref: '#/components/schemas/Order' } },
+        },
+        OrderList: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            total: { type: 'integer' },
+            orders: { type: 'array', items: { $ref: '#/components/schemas/Order' } },
+          },
+        },
+        Review: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            product: { type: 'string' },
+            user: { type: 'string' },
+            rating: { type: 'integer', minimum: 1, maximum: 5 },
+            comment: { type: 'string' },
+            status: { type: 'string', enum: ['approved', 'hidden'] },
+            response: { type: 'string' },
+          },
+          example: {
+            _id: '665f1a2b3c4d5e6f7a8b9c21',
+            product: '665f1a2b3c4d5e6f7a8b9c0d',
+            rating: 5,
+            comment: 'Áo mặc thoáng, đúng size.',
+            status: 'approved',
+            response: '',
+          },
+        },
+        ReviewList: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, reviews: { type: 'array', items: { $ref: '#/components/schemas/Review' } } },
+        },
+        ReviewResult: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, review: { $ref: '#/components/schemas/Review' } },
+        },
+        Comment: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            product: { type: 'string' },
+            user: { type: 'string' },
+            content: { type: 'string' },
+            parentComment: { type: 'string', nullable: true },
+            isStaffReply: { type: 'boolean' },
+          },
+          example: {
+            _id: '665f1a2b3c4d5e6f7a8b9c0c',
+            product: '665f1a2b3c4d5e6f7a8b9c0d',
+            content: 'Sản phẩm có đổi size không?',
+            parentComment: null,
+            isStaffReply: false,
+          },
+        },
+        CommentList: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, comments: { type: 'array', items: { $ref: '#/components/schemas/Comment' } } },
+        },
+        CommentResult: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, comment: { $ref: '#/components/schemas/Comment' } },
+        },
+        Coupon: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            code: { type: 'string' },
+            discountType: { type: 'string', enum: ['percentage', 'fixed'] },
+            discountValue: { type: 'number' },
+            minOrderValue: { type: 'number' },
+            expiryDate: { type: 'string', format: 'date-time', nullable: true },
+            usageLimit: { type: 'integer', nullable: true },
+            usedCount: { type: 'integer' },
+          },
+          example: {
+            code: 'WELCOME10',
+            discountType: 'percentage',
+            discountValue: 10,
+            minOrderValue: 0,
+            usageLimit: null,
+            usedCount: 0,
+          },
+        },
+        CouponList: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            coupons: { type: 'array', items: { $ref: '#/components/schemas/Coupon' } },
+            total: { type: 'integer' },
+          },
+        },
+        Stats: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            totalRevenue: { type: 'number' },
+            totalOrders: { type: 'integer' },
+            totalUsers: { type: 'integer' },
+            totalProducts: { type: 'integer' },
+          },
+          example: { success: true, totalRevenue: 0, totalOrders: 0, totalUsers: 1, totalProducts: 0 },
         },
       },
     },
